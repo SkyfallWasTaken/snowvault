@@ -7,9 +7,12 @@ use commands::{Cli, Command};
 mod vault;
 
 fn main() -> Result<()> {
+    color_eyre::install()?;
+
     let cli = Cli::parse();
     match &cli.command {
-        Command::New => commands::new::cmd()?,
+        Command::New { path } => commands::new::cmd(path)?,
+        Command::Mount { path } => commands::mount::cmd(path)?,
     }
 
     Ok(())

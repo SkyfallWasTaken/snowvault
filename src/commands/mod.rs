@@ -1,5 +1,8 @@
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
 
+pub mod mount;
 pub mod new;
 
 #[derive(Parser)]
@@ -12,5 +15,14 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Command {
     /// Create a new vault
-    New,
+    New {
+        /// Path to the vault
+        path: PathBuf,
+    },
+
+    /// Mounts a vault
+    Mount {
+        /// Path to the vault
+        path: PathBuf,
+    },
 }
