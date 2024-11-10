@@ -1,5 +1,7 @@
 use clap::{Parser, Subcommand};
 
+pub mod new;
+
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 pub struct Cli {

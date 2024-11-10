@@ -7,8 +7,12 @@ edition = "2021"
 argon2 = "0.5.3"
 clap = { version = "4.5.20", features = ["derive"] }
 color-eyre = "0.6.3"
+const_format = "0.2.33"
+dialoguer = "0.11.0"
 hex = "0.4.3"
 rand = "0.8.5"
 secrecy = "0.10.3"
 serde = { version = "1.0.214", features = ["derive"] }
 tar = "0.4.43"
+toml = "0.8.19"
+zstd = "0.13.2"
