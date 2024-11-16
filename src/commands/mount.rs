@@ -1,12 +1,11 @@
-use std::path::PathBuf;
+use std::path::Path;
 
-use crate::vault::{Vault, MIN_PASSWORD_LENGTH};
+use crate::vault::Vault;
 use color_eyre::Result;
-use const_format::formatcp;
 use dialoguer::{theme::ColorfulTheme, Password};
 use secrecy::SecretString;
 
-pub fn cmd(path: &PathBuf) -> Result<()> {
+pub fn cmd(path: &Path) -> Result<()> {
     let password: SecretString = Password::with_theme(&ColorfulTheme::default())
         .with_prompt("Password")
         .interact()?

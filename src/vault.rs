@@ -1,34 +1,57 @@
 use std::{
-    collections::HashMap,
     fs::File,
-    io::{BufReader, Read},
-    path::PathBuf,
+    io::Read,
+    path::{Path, PathBuf},
 };
 
+use aes_gcm::{
+    aead::{Aead, AeadCore, KeyInit},
+    Aes256Gcm, Nonce,
+};
 use argon2::Argon2;
 use color_eyre::{
     eyre::{eyre, Context},
     Result,
 };
-use const_format::formatcp;
 use rand::{rngs::ThreadRng, Rng};
 use secrecy::{ExposeSecret, ExposeSecretMut, SecretSlice, SecretString};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tar::Archive;
-use zstd::Decoder;
 
 const SALT_SIZE: usize = 16; // As recommended by the Argon2 docs
 const KEY_SIZE: usize = 256; // We use AES-256, so we need a 256-bit key
-const META_FILENAME: &str = "snowvault.toml";
-pub const VAULT_EXTENSION: &str = "snow";
-pub const MIN_PASSWORD_LENGTH: usize = 8;
+const META_FILENAME: &str = "vault.snow";
+pub const MIN_PASSWORD_LENGTH: usize = 6;
 
-pub struct Vault<'a> {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Vault {
     pub meta: VaultMeta,
-    pub path: &'a PathBuf,
+    pub path: PathBuf,
+    enc_entries: Vec<EncVaultEntry>,
+    #[serde(skip)]
+    pub entries: Vec<VaultEntry>,
+    #[serde(skip)]
     rng: ThreadRng,
-    temp: HashMap<String, Vec<u8>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EncVaultEntry {
+    nonce: String,
+    ciphertext: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum VaultEntry {
+    Note {
+        name: String,
+        content: Option<String>,
+    },
+    Login {
+        name: String,
+        uris: Vec<String>,
+        username: Option<String>,
+        password: Option<String>,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -40,8 +63,8 @@ pub struct VaultMeta {
     pub master_key_hash: String,
 }
 
-impl<'a> Vault<'a> {
-    pub fn new_from_password(path: &'a PathBuf, password: &SecretString) -> Result<Self> {
+impl Vault {
+    pub fn new_from_password(path: &PathBuf, password: &SecretString) -> Result<Self> {
         let mut rng = rand::thread_rng();
         let salt: [u8; SALT_SIZE] = rng.gen();
         let mut output_key_material = SecretSlice::new(Box::new([0u8; KEY_SIZE]));
@@ -64,44 +87,28 @@ impl<'a> Vault<'a> {
                     .finalize(),
             ),
         };
-        let meta_toml: String = toml::to_string(&meta).wrap_err("failed to serialize metadata")?;
-
-        let mut vault = Self {
+        let vault = Self {
             meta,
             rng,
-            temp: HashMap::new(),
-            path,
+            path: path.clone(),
+            enc_entries: Vec::new(),
+            entries: Vec::new(),
         };
-        vault.add_file(META_FILENAME, meta_toml.as_bytes())?;
-        vault.flush()?;
+
+        let toml: String = toml::to_string(&vault).wrap_err("failed to serialize vault")?;
+        std::fs::write(path, toml)?;
+
         Ok(vault)
     }
 
-    pub fn load_from_file(path: &'a PathBuf, password: &SecretString) -> Result<Self> {
-        let file = File::open(path.clone()).wrap_err("failed to open archive file")?;
-        let reader = BufReader::new(file);
-        let decoder = Decoder::new(reader).wrap_err("failed to decompress archive")?;
-        let mut archive = Archive::new(decoder);
-        let entries = archive
-            .entries()
-            .wrap_err("failed to get archive entries")?;
+    pub fn load_from_file(path: &Path, password: &SecretString) -> Result<Self> {
+        let mut file = File::open(path).wrap_err("failed to open archive file")?;
 
-        let mut meta_contents: String = String::new();
-        let mut found_meta = false;
-        for entry in entries {
-            let mut entry = entry?;
-            if entry.path()?.ends_with(META_FILENAME) {
-                entry.read_to_string(&mut meta_contents).unwrap();
-                found_meta = true;
-                break;
-            }
-        }
-        if !found_meta {
-            return Err(eyre!(formatcp!("{META_FILENAME} not found in archive")));
-        }
-
-        let mut vault_meta: VaultMeta = toml::from_str(&meta_contents)?;
-        let salt = hex::decode(vault_meta.salt.clone()).wrap_err("failed to decode salt")?;
+        let mut vault_contents = String::new();
+        file.read_to_string(&mut vault_contents)
+            .wrap_err("failed to read archive file")?;
+        let mut vault: Vault = toml::from_str(&vault_contents)?;
+        let salt = hex::decode(vault.meta.salt.clone()).wrap_err("failed to decode salt")?;
         let mut output_key_material = SecretSlice::new(Box::new([0u8; KEY_SIZE]));
         Argon2::default()
             .hash_password_into(
@@ -110,47 +117,47 @@ impl<'a> Vault<'a> {
                 output_key_material.expose_secret_mut(),
             )
             .map_err(|_| eyre!("failed to generate master key when opening archive"))?;
-        vault_meta.master_key = Some(output_key_material.clone());
+        vault.meta.master_key = Some(output_key_material.clone());
         let master_key_hash = hex::encode(
             Sha256::new()
                 .chain_update(output_key_material.expose_secret())
-                .chain_update(vault_meta.salt.as_bytes())
+                .chain_update(vault.meta.salt.as_bytes())
                 .finalize(),
         );
-        if master_key_hash != vault_meta.master_key_hash {
+        if master_key_hash != vault.meta.master_key_hash {
             return Err(eyre!("invalid password"));
         }
+        vault.rng = rand::thread_rng();
 
-        Ok(Self {
-            meta: vault_meta,
-            rng: rand::thread_rng(),
-            path,
-            temp: HashMap::new(),
-        })
-    }
-
-    pub fn flush(&mut self) -> Result<()> {
-        let mut tar_bytes = Vec::new();
-        let mut archive = tar::Builder::new(&mut tar_bytes);
-        for (name, data) in self.temp.iter() {
-            let mut header = tar::Header::new_gnu();
-            header.set_path(name)?;
-            header.set_size(data.len() as u64);
-            header.set_cksum();
-            archive.append(&header, &data[..])?;
+        let cipher = Aes256Gcm::new_from_slice(output_key_material.expose_secret())
+            .map_err(|_| eyre!("invalid key length"))?;
+        for entry in &vault.enc_entries {
+            let nonce_vec = hex::decode(entry.nonce.clone())?;
+            let nonce = Nonce::from_slice(&nonce_vec);
+            let plaintext = cipher
+                .decrypt(nonce, entry.ciphertext.as_ref())
+                .map_err(|e| eyre!("decryption error: {}", e))?;
+            let entry: VaultEntry = toml::from_str(std::str::from_utf8(&plaintext)?)?;
+            vault.entries.push(entry);
         }
-        let tar_bytes = archive
-            .into_inner()
-            .wrap_err("failed to finalize archive")?;
-        let compressed =
-            zstd::encode_all(&tar_bytes[..], 0).wrap_err("failed to compress archive")?;
-        std::fs::write(&self.path, compressed).wrap_err("failed to write archive")?;
-        self.temp.clear();
-        Ok(())
+
+        Ok(vault)
     }
 
-    pub fn add_file(&mut self, name: &str, data: &[u8]) -> Result<()> {
-        self.temp.insert(name.to_string(), data.to_vec());
+    pub fn add_entry(&mut self, entry: VaultEntry, key: &SecretSlice<u8>) -> Result<()> {
+        let nonce = Aes256Gcm::generate_nonce(&mut self.rng);
+        let cipher = Aes256Gcm::new_from_slice(key.expose_secret())
+            .map_err(|_| eyre!("invalid key length"))?;
+        let plaintext = toml::to_string(&entry)?;
+        let ciphertext = cipher
+            .encrypt(&nonce, plaintext.as_bytes())
+            .map_err(|e| eyre!("encryption error: {}", e))?;
+        let enc_entry = EncVaultEntry {
+            nonce: hex::encode(nonce.as_slice()),
+            ciphertext: hex::encode(ciphertext),
+        };
+        self.enc_entries.push(enc_entry);
+        self.entries.push(entry);
         Ok(())
     }
 }
