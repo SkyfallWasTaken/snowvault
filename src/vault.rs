@@ -40,8 +40,11 @@ pub struct Vault {
 
 #[derive(Debug, Serialize, Deserialize)]
 struct EncVaultEntry {
+    /// The nonce is encoded as a hex string.
     nonce: String,
-    ciphertext: String,
+
+    /// The ciphertext is encoded as a hex string.
+    encoded_ciphertext: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -135,7 +138,7 @@ impl Vault {
             .map_err(|e| eyre!("encryption error: {}", e))?;
         let enc_entry = EncVaultEntry {
             nonce: hex::encode(nonce),
-            ciphertext: hex::encode(ciphertext),
+            encoded_ciphertext: hex::encode(ciphertext),
         };
         self.enc_entries.push(enc_entry);
         self.entries.push(entry);
@@ -185,7 +188,7 @@ fn decrypt_entries(vault: &mut Vault, cipher: &Aes256Gcm) -> Result<()> {
     for entry in &vault.enc_entries {
         let nonce_vec = hex::decode(entry.nonce.clone())?;
         let nonce = Nonce::from_slice(&nonce_vec);
-        let ciphertext = hex::decode(&entry.ciphertext)?;
+        let ciphertext = hex::decode(&entry.encoded_ciphertext)?;
         let plaintext = cipher
             .decrypt(nonce, ciphertext.as_slice())
             .map_err(|e| eyre!("decryption error: {}", e))?;
