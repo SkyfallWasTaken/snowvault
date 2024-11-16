@@ -1,3 +1,4 @@
+use std::sync::{LazyLock, Mutex};
 use std::{
     fs::File,
     io::Read,
@@ -13,7 +14,10 @@ use color_eyre::{
     eyre::{eyre, Context},
     Result,
 };
-use rand::{rngs::ThreadRng, Rng};
+use rand_chacha::{
+    rand_core::{RngCore, SeedableRng},
+    ChaCha20Rng,
+};
 use secrecy::{ExposeSecret, ExposeSecretMut, SecretSlice, SecretString};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -22,6 +26,9 @@ const SALT_SIZE: usize = 16; // As recommended by the Argon2 docs
 const KEY_SIZE: usize = 32; // We use AES-256, so we need a 256-bit key (32 bytes)
 pub const MIN_PASSWORD_LENGTH: usize = 6;
 
+static GLOBAL_RNG: LazyLock<Mutex<ChaCha20Rng>> =
+    LazyLock::new(|| Mutex::new(ChaCha20Rng::from_entropy()));
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Vault {
     pub meta: VaultMeta,
@@ -29,8 +36,6 @@ pub struct Vault {
     enc_entries: Vec<EncVaultEntry>,
     #[serde(skip)]
     pub entries: Vec<VaultEntry>,
-    #[serde(skip)]
-    rng: ThreadRng,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -54,7 +59,7 @@ pub enum VaultEntry {
     },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub struct VaultMeta {
     pub salt: String,
     pub key_len: usize,
@@ -64,9 +69,9 @@ pub struct VaultMeta {
 }
 
 impl Vault {
-    pub fn new_from_password(path: &PathBuf, password: &SecretString) -> Result<Self> {
-        let mut rng = rand::thread_rng();
-        let salt: [u8; SALT_SIZE] = rng.gen();
+    pub fn new_from_password(path: &Path, password: &SecretString) -> Result<Self> {
+        let mut salt = [0u8; SALT_SIZE];
+        GLOBAL_RNG.lock().unwrap().fill_bytes(&mut salt);
         let output_key_material = generate_master_key(password, &salt)?;
         let salt = hex::encode(salt);
 
@@ -83,8 +88,7 @@ impl Vault {
         };
         let vault = Self {
             meta,
-            rng,
-            path: path.clone(),
+            path: path.to_path_buf(),
             enc_entries: Vec::new(),
             entries: Vec::new(),
         };
@@ -99,7 +103,7 @@ impl Vault {
         file.read_to_string(&mut vault_contents)
             .wrap_err("failed to read archive file")?;
 
-        let mut vault: Vault = toml::from_str(&vault_contents)?;
+        let mut vault: Self = toml::from_str(&vault_contents)?;
         let salt = hex::decode(vault.meta.salt.clone()).wrap_err("failed to decode salt")?;
 
         let output_key_material = generate_master_key(password, &salt)?;
@@ -110,7 +114,6 @@ impl Vault {
 
         verify_master_key(&vault, &output_key_material)?;
 
-        vault.rng = rand::thread_rng();
         let cipher = Aes256Gcm::new_from_slice(output_key_material.expose_secret())
             .map_err(|_| eyre!("invalid key length"))?;
 
@@ -120,7 +123,10 @@ impl Vault {
     }
 
     pub fn add_entry(&mut self, entry: VaultEntry, key: &SecretSlice<u8>) -> Result<()> {
-        let nonce = Aes256Gcm::generate_nonce(&mut self.rng);
+        let nonce = {
+            let mut rng = GLOBAL_RNG.lock().unwrap();
+            Aes256Gcm::generate_nonce(&mut *rng)
+        };
         let cipher = Aes256Gcm::new_from_slice(key.expose_secret())
             .map_err(|_| eyre!("invalid key length"))?;
         let plaintext = toml::to_string(&entry)?;
@@ -136,10 +142,9 @@ impl Vault {
         Ok(())
     }
 
-    pub fn rm_entry(&mut self, index: usize) -> Result<()> {
+    pub fn rm_entry(&mut self, index: usize) {
         self.enc_entries.remove(index);
         self.entries.remove(index);
-        Ok(())
     }
 
     pub fn save(&self) -> Result<()> {
