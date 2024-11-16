@@ -11,11 +11,11 @@ pub fn cmd(path: &PathBuf) -> Result<()> {
         .with_prompt("Password")
         .with_confirmation("Repeat password", "Error: the passwords don't match.")
         .validate_with(|input: &String| -> Result<(), &str> {
-            if input.chars().count() > MIN_PASSWORD_LENGTH {
+            if input.chars().count() >= MIN_PASSWORD_LENGTH {
                 Ok(())
             } else {
                 Err(formatcp!(
-                    "Password must be longer than {MIN_PASSWORD_LENGTH} characters."
+                    "Password must be at least {MIN_PASSWORD_LENGTH} characters."
                 ))
             }
         })
