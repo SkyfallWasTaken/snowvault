@@ -1,5 +1,7 @@
 # Snowvault
 
+<img src="https://raw.githubusercontent.com/SkyfallWasTaken/snowvault/refs/heads/master/snowvault-hero.png" alt="Snowvault - One password to rule them all." style="border-radius: 9px;">
+
 ## Cryptography & Security
 
 - **AES-256-GCM** used for encryption of entries. Unique nonce per entry.
