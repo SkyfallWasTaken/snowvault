@@ -12,7 +12,7 @@ use color_eyre::{
 };
 use const_format::formatcp;
 use rand::{rngs::ThreadRng, Rng};
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::{ExposeSecret, ExposeSecretMut, SecretSlice, SecretString};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tar::Archive;
@@ -36,7 +36,7 @@ pub struct VaultMeta {
     pub salt: String,
     pub key_len: usize,
     #[serde(skip)]
-    pub master_key: Option<Vec<u8>>,
+    pub master_key: Option<SecretSlice<u8>>,
     pub master_key_hash: String,
 }
 
@@ -44,22 +44,22 @@ impl<'a> Vault<'a> {
     pub fn new_from_password(path: &'a PathBuf, password: &SecretString) -> Result<Self> {
         let mut rng = rand::thread_rng();
         let salt: [u8; SALT_SIZE] = rng.gen();
-        let mut output_key_material = [0u8; KEY_SIZE];
+        let mut output_key_material = SecretSlice::new(Box::new([0u8; KEY_SIZE]));
         Argon2::default()
             .hash_password_into(
                 password.expose_secret().as_bytes(),
                 &salt,
-                &mut output_key_material,
+                output_key_material.expose_secret_mut(),
             )
             .map_err(|_| eyre!("failed to generate master key"))?;
         let salt = hex::encode(salt);
         let meta = VaultMeta {
             salt: salt.clone(),
             key_len: KEY_SIZE,
-            master_key: Some(output_key_material.to_vec()),
+            master_key: Some(output_key_material.clone()),
             master_key_hash: hex::encode(
                 Sha256::new()
-                    .chain_update(output_key_material)
+                    .chain_update(output_key_material.expose_secret())
                     .chain_update(salt.as_bytes())
                     .finalize(),
             ),
@@ -102,18 +102,18 @@ impl<'a> Vault<'a> {
 
         let mut vault_meta: VaultMeta = toml::from_str(&meta_contents)?;
         let salt = hex::decode(vault_meta.salt.clone()).wrap_err("failed to decode salt")?;
-        let mut output_key_material = [0u8; KEY_SIZE];
+        let mut output_key_material = SecretSlice::new(Box::new([0u8; KEY_SIZE]));
         Argon2::default()
             .hash_password_into(
                 password.expose_secret().as_bytes(),
                 &salt,
-                &mut output_key_material,
+                output_key_material.expose_secret_mut(),
             )
             .map_err(|_| eyre!("failed to generate master key when opening archive"))?;
-        vault_meta.master_key = Some(output_key_material.to_vec());
+        vault_meta.master_key = Some(output_key_material.clone());
         let master_key_hash = hex::encode(
             Sha256::new()
-                .chain_update(output_key_material)
+                .chain_update(output_key_material.expose_secret())
                 .chain_update(vault_meta.salt.as_bytes())
                 .finalize(),
         );
