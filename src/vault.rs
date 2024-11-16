@@ -67,15 +67,9 @@ impl Vault {
     pub fn new_from_password(path: &PathBuf, password: &SecretString) -> Result<Self> {
         let mut rng = rand::thread_rng();
         let salt: [u8; SALT_SIZE] = rng.gen();
-        let mut output_key_material = SecretSlice::new(Box::new([0u8; KEY_SIZE]));
-        Argon2::default()
-            .hash_password_into(
-                password.expose_secret().as_bytes(),
-                &salt,
-                output_key_material.expose_secret_mut(),
-            )
-            .map_err(|_| eyre!("failed to generate master key"))?;
-        let salt = hex::encode(salt);
+        let output_key_material = generate_master_key(password, &salt)?;
+        let salt = hex::encode(rng.gen::<[u8; SALT_SIZE]>());
+
         let meta = VaultMeta {
             salt: salt.clone(),
             key_len: KEY_SIZE,
@@ -95,51 +89,29 @@ impl Vault {
             entries: Vec::new(),
         };
 
-        let toml: String = toml::to_string(&vault).wrap_err("failed to serialize vault")?;
-        std::fs::write(path, toml)?;
-
+        vault.save()?;
         Ok(vault)
     }
 
     pub fn load_from_file(path: &Path, password: &SecretString) -> Result<Self> {
         let mut file = File::open(path).wrap_err("failed to open archive file")?;
-
         let mut vault_contents = String::new();
         file.read_to_string(&mut vault_contents)
             .wrap_err("failed to read archive file")?;
+
         let mut vault: Vault = toml::from_str(&vault_contents)?;
         let salt = hex::decode(vault.meta.salt.clone()).wrap_err("failed to decode salt")?;
-        let mut output_key_material = SecretSlice::new(Box::new([0u8; KEY_SIZE]));
-        Argon2::default()
-            .hash_password_into(
-                password.expose_secret().as_bytes(),
-                &salt,
-                output_key_material.expose_secret_mut(),
-            )
-            .map_err(|_| eyre!("failed to generate master key when opening archive"))?;
-        vault.meta.master_key = Some(output_key_material.clone());
-        let master_key_hash = hex::encode(
-            Sha256::new()
-                .chain_update(output_key_material.expose_secret())
-                .chain_update(vault.meta.salt.as_bytes())
-                .finalize(),
-        );
-        if master_key_hash != vault.meta.master_key_hash {
-            return Err(eyre!("invalid password"));
-        }
-        vault.rng = rand::thread_rng();
 
+        let output_key_material = generate_master_key(password, &salt)?;
+        vault.meta.master_key = Some(output_key_material.clone());
+
+        verify_master_key(&vault, &output_key_material)?;
+
+        vault.rng = rand::thread_rng();
         let cipher = Aes256Gcm::new_from_slice(output_key_material.expose_secret())
             .map_err(|_| eyre!("invalid key length"))?;
-        for entry in &vault.enc_entries {
-            let nonce_vec = hex::decode(entry.nonce.clone())?;
-            let nonce = Nonce::from_slice(&nonce_vec);
-            let plaintext = cipher
-                .decrypt(nonce, entry.ciphertext.as_ref())
-                .map_err(|e| eyre!("decryption error: {}", e))?;
-            let entry: VaultEntry = toml::from_str(std::str::from_utf8(&plaintext)?)?;
-            vault.entries.push(entry);
-        }
+
+        decrypt_entries(&mut vault, &cipher)?;
 
         Ok(vault)
     }
@@ -160,4 +132,54 @@ impl Vault {
         self.entries.push(entry);
         Ok(())
     }
+
+    pub fn rm_entry(&mut self, index: usize) -> Result<()> {
+        self.enc_entries.remove(index);
+        self.entries.remove(index);
+        Ok(())
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let toml: String = toml::to_string(self)?;
+        std::fs::write(&self.path, toml)?;
+        Ok(())
+    }
+}
+
+fn generate_master_key(password: &SecretString, salt: &[u8]) -> Result<SecretSlice<u8>> {
+    let mut output_key_material = SecretSlice::new(Box::new([0u8; KEY_SIZE]));
+    Argon2::default()
+        .hash_password_into(
+            password.expose_secret().as_bytes(),
+            salt,
+            output_key_material.expose_secret_mut(),
+        )
+        .map_err(|_| eyre!("failed to generate master key when opening archive"))?;
+    Ok(output_key_material)
+}
+
+fn verify_master_key(vault: &Vault, output_key_material: &SecretSlice<u8>) -> Result<()> {
+    let master_key_hash = hex::encode(
+        Sha256::new()
+            .chain_update(output_key_material.expose_secret())
+            .chain_update(vault.meta.salt.as_bytes())
+            .finalize(),
+    );
+    if master_key_hash != vault.meta.master_key_hash {
+        return Err(eyre!("invalid password"));
+    }
+    Ok(())
+}
+
+fn decrypt_entries(vault: &mut Vault, cipher: &Aes256Gcm) -> Result<()> {
+    for entry in &vault.enc_entries {
+        let nonce_vec = hex::decode(entry.nonce.clone())?;
+        let nonce = Nonce::from_slice(&nonce_vec);
+        let plaintext = cipher
+            .decrypt(nonce, entry.ciphertext.as_ref())
+            .map_err(|e| eyre!("decryption error: {}", e))?;
+        let entry: VaultEntry = toml::from_str(std::str::from_utf8(&plaintext)?)?;
+        vault.entries.push(entry);
+    }
+    Ok(())
 }
