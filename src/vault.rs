@@ -20,7 +20,6 @@ use sha2::{Digest, Sha256};
 
 const SALT_SIZE: usize = 16; // As recommended by the Argon2 docs
 const KEY_SIZE: usize = 32; // We use AES-256, so we need a 256-bit key (32 bytes)
-const META_FILENAME: &str = "vault.snow";
 pub const MIN_PASSWORD_LENGTH: usize = 6;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -82,7 +81,7 @@ impl Vault {
                     .finalize(),
             ),
         };
-        let mut vault = Self {
+        let vault = Self {
             meta,
             rng,
             path: path.clone(),
