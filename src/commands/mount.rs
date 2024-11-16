@@ -11,7 +11,7 @@ pub fn cmd(path: &Path) -> Result<()> {
         .interact()?
         .into();
     let vault = Vault::load_from_file(path, &password)?;
-    dbg!(vault.meta);
+    dbg!(vault);
 
     Ok(())
 }

@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 const SALT_SIZE: usize = 16; // As recommended by the Argon2 docs
-const KEY_SIZE: usize = 256; // We use AES-256, so we need a 256-bit key
+const KEY_SIZE: usize = 32; // We use AES-256, so we need a 256-bit key (32 bytes)
 const META_FILENAME: &str = "vault.snow";
 pub const MIN_PASSWORD_LENGTH: usize = 6;
 
@@ -35,12 +35,13 @@ pub struct Vault {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct EncVaultEntry {
+struct EncVaultEntry {
     nonce: String,
     ciphertext: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum VaultEntry {
     Note {
         name: String,
@@ -68,7 +69,7 @@ impl Vault {
         let mut rng = rand::thread_rng();
         let salt: [u8; SALT_SIZE] = rng.gen();
         let output_key_material = generate_master_key(password, &salt)?;
-        let salt = hex::encode(rng.gen::<[u8; SALT_SIZE]>());
+        let salt = hex::encode(salt);
 
         let meta = VaultMeta {
             salt: salt.clone(),
@@ -81,7 +82,7 @@ impl Vault {
                     .finalize(),
             ),
         };
-        let vault = Self {
+        let mut vault = Self {
             meta,
             rng,
             path: path.clone(),
@@ -103,6 +104,9 @@ impl Vault {
         let salt = hex::decode(vault.meta.salt.clone()).wrap_err("failed to decode salt")?;
 
         let output_key_material = generate_master_key(password, &salt)?;
+        if output_key_material.expose_secret().len() != 32 {
+            return Err(eyre!("invalid key length"));
+        }
         vault.meta.master_key = Some(output_key_material.clone());
 
         verify_master_key(&vault, &output_key_material)?;
@@ -125,7 +129,7 @@ impl Vault {
             .encrypt(&nonce, plaintext.as_bytes())
             .map_err(|e| eyre!("encryption error: {}", e))?;
         let enc_entry = EncVaultEntry {
-            nonce: hex::encode(nonce.as_slice()),
+            nonce: hex::encode(nonce),
             ciphertext: hex::encode(ciphertext),
         };
         self.enc_entries.push(enc_entry);
@@ -155,6 +159,7 @@ fn generate_master_key(password: &SecretString, salt: &[u8]) -> Result<SecretSli
             output_key_material.expose_secret_mut(),
         )
         .map_err(|_| eyre!("failed to generate master key when opening archive"))?;
+    debug_assert_eq!(output_key_material.expose_secret().len(), KEY_SIZE);
     Ok(output_key_material)
 }
 
@@ -165,6 +170,7 @@ fn verify_master_key(vault: &Vault, output_key_material: &SecretSlice<u8>) -> Re
             .chain_update(vault.meta.salt.as_bytes())
             .finalize(),
     );
+
     if master_key_hash != vault.meta.master_key_hash {
         return Err(eyre!("invalid password"));
     }
@@ -175,10 +181,13 @@ fn decrypt_entries(vault: &mut Vault, cipher: &Aes256Gcm) -> Result<()> {
     for entry in &vault.enc_entries {
         let nonce_vec = hex::decode(entry.nonce.clone())?;
         let nonce = Nonce::from_slice(&nonce_vec);
+        let ciphertext = hex::decode(&entry.ciphertext)?;
         let plaintext = cipher
-            .decrypt(nonce, entry.ciphertext.as_ref())
+            .decrypt(nonce, ciphertext.as_slice())
             .map_err(|e| eyre!("decryption error: {}", e))?;
-        let entry: VaultEntry = toml::from_str(std::str::from_utf8(&plaintext)?)?;
+
+        let entry_str = std::str::from_utf8(&plaintext)?;
+        let entry: VaultEntry = toml::from_str(entry_str)?;
         vault.entries.push(entry);
     }
     Ok(())
