@@ -1,7 +1,7 @@
+use std::io::Read;
 use std::sync::{LazyLock, Mutex};
 use std::{
     fs::File,
-    io::Read,
     path::{Path, PathBuf},
 };
 
@@ -10,10 +10,7 @@ use aes_gcm::{
     Aes256Gcm, Nonce,
 };
 use argon2::Argon2;
-use color_eyre::{
-    eyre::{eyre, Context},
-    Result,
-};
+use eyre::{eyre, Context, Result};
 use rand_chacha::{
     rand_core::{RngCore, SeedableRng},
     ChaCha20Rng,

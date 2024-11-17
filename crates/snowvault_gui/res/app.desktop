@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Snowvault
+Exec=snowvault-gui %F
+Terminal=false
+Type=Application
+StartupNotify=true
+Icon=dev.skyfall.Snowvault
+Categories=COSMIC;
+Keywords=
+MimeType=
