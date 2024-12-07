@@ -1,0 +1,12 @@
+[package]
+name = "snowvault-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+snowvault = { path = "../snowvault" }
+clap = { version = "4.5.21", features = ["derive"] }
+color-eyre = "0.6.3"
+secrecy = { version = "0.10.3", features = ["serde"] }
+const_format = "0.2.34"
+dialoguer = "0.11.0"

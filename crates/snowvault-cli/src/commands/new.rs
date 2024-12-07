@@ -1,10 +1,10 @@
 use std::path::Path;
 
-use crate::vault::{Vault, MIN_PASSWORD_LENGTH};
 use color_eyre::Result;
 use const_format::formatcp;
 use dialoguer::{theme::ColorfulTheme, Password};
 use secrecy::SecretString;
+use snowvault::{Vault, MIN_PASSWORD_LENGTH};
 
 pub fn cmd(path: &Path) -> Result<()> {
     let password: SecretString = Password::with_theme(&ColorfulTheme::default())

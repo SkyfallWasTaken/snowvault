@@ -4,8 +4,6 @@ use color_eyre::Result;
 
 use commands::{Cli, Command};
 
-mod vault;
-
 fn main() -> Result<()> {
     color_eyre::install()?;
 
