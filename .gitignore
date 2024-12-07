@@ -2,3 +2,4 @@
 *.snow
 snowvault.toml
 *.vault
+**/*.vault
