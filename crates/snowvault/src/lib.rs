@@ -1,4 +1,3 @@
-use std::sync::{LazyLock, Mutex};
 use std::{
     fs::File,
     io::Read,
@@ -22,9 +21,6 @@ use sha2::{Digest, Sha256};
 const SALT_SIZE: usize = 16; // As recommended by the Argon2 docs
 const KEY_SIZE: usize = 32; // We use AES-256, so we need a 256-bit key (32 bytes)
 pub const MIN_PASSWORD_LENGTH: usize = 6;
-
-static GLOBAL_RNG: LazyLock<Mutex<ChaCha20Rng>> =
-    LazyLock::new(|| Mutex::new(ChaCha20Rng::from_entropy()));
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Vault {
@@ -69,9 +65,10 @@ pub struct VaultMeta {
 }
 
 impl Vault {
-    pub fn new_from_password(path: &Path, password: &SecretString) -> Result<Self> {
+    pub fn new_from_password<T: AsRef<PathBuf>>(path: T, password: &SecretString) -> Result<Self> {
         let mut salt = [0u8; SALT_SIZE];
-        GLOBAL_RNG.lock().unwrap().fill_bytes(&mut salt);
+        let mut rng = ChaCha20Rng::from_entropy();
+        rng.fill_bytes(&mut salt);
         let output_key_material = generate_master_key(password, &salt)?;
         let salt = hex::encode(salt);
 
@@ -88,7 +85,7 @@ impl Vault {
         };
         let vault = Self {
             meta,
-            path: path.to_path_buf(),
+            path: path.as_ref().to_path_buf(),
             enc_entries: Vec::new(),
             entries: Vec::new(),
         };
@@ -124,8 +121,8 @@ impl Vault {
 
     pub fn add_entry(&mut self, entry: VaultEntry, key: &SecretSlice<u8>) -> Result<()> {
         let nonce = {
-            let mut rng = GLOBAL_RNG.lock().unwrap();
-            Aes256Gcm::generate_nonce(&mut *rng)
+            let mut rng = ChaCha20Rng::from_entropy();
+            Aes256Gcm::generate_nonce(&mut rng)
         };
         let cipher = Aes256Gcm::new_from_slice(key.expose_secret())
             .map_err(|_| eyre!("invalid key length"))?;
@@ -148,6 +145,7 @@ impl Vault {
     }
 
     pub fn save(&self) -> Result<()> {
+        // Everything's encrypted already, so this isn't an issue
         let toml: String = toml::to_string(self)?;
         std::fs::write(&self.path, toml)?;
         Ok(())
