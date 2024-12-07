@@ -65,7 +65,7 @@ pub struct VaultMeta {
 }
 
 impl Vault {
-    pub fn new_from_password<T: AsRef<PathBuf>>(path: T, password: &SecretString) -> Result<Self> {
+    pub fn new_from_password(path: PathBuf, password: &SecretString) -> Result<Self> {
         let mut salt = [0u8; SALT_SIZE];
         let mut rng = ChaCha20Rng::from_entropy();
         rng.fill_bytes(&mut salt);
@@ -85,7 +85,7 @@ impl Vault {
         };
         let vault = Self {
             meta,
-            path: path.as_ref().to_path_buf(),
+            path,
             enc_entries: Vec::new(),
             entries: Vec::new(),
         };
