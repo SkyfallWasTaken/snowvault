@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
-pub mod mount;
 pub mod new;
+pub mod open;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -20,8 +20,8 @@ pub enum Command {
         path: PathBuf,
     },
 
-    /// Mounts a vault
-    Mount {
+    /// Opens a vault
+    Open {
         /// Path to the vault
         path: PathBuf,
     },

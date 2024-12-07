@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     match &cli.command {
         Command::New { path } => commands::new::cmd(path)?,
-        Command::Mount { path } => commands::mount::cmd(path)?,
+        Command::Open { path } => commands::open::cmd(path)?,
     }
 
     Ok(())

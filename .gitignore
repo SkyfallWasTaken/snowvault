@@ -1,3 +1,4 @@
 /target
 *.snow
 snowvault.toml
+*.vault
