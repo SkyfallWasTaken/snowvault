@@ -22,7 +22,7 @@ pub fn cmd(path: &Path) -> Result<()> {
         .interact()?
         .into();
 
-    Vault::new_from_password(path, &password)?;
+    Vault::new_from_password(path.to_path_buf(), &password)?;
 
     Ok(())
 }
