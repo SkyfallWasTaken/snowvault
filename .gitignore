@@ -3,3 +3,5 @@
 snowvault.toml
 *.vault
 **/*.vault
+crates/snowvault-gui/.cargo/config.toml
+/.cargo
