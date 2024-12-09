@@ -1,6 +1,6 @@
 use iced::{
     widget::{button, column, row, scrollable, text, text_input, Column},
-    Length,
+    Length, Theme,
 };
 use rfd::FileDialog;
 use secrecy::{ExposeSecret, SecretString};
@@ -82,7 +82,7 @@ impl Application {
                             column![text("Login"), text(name.clone()),].into()
                         }
                         VaultEntry::Note { name, .. } => {
-                            column![text("Login"), text(name.clone()),].into()
+                            column![text("Note"), text(name.clone()),].into()
                         }
                     });
 
@@ -104,21 +104,27 @@ impl Application {
                 Some(Err(err)) => column![
                     text("Error opening vault"),
                     text(err.to_string()),
-                    text_input("Password", &self.password.expose_secret())
+                    text_input("Password", self.password.expose_secret())
                         .secure(true)
                         .on_input(Message::PasswordInputUpdated),
                 ],
                 None => column![
                     text("No vault opened"),
-                    text_input("Password", &self.password.expose_secret())
+                    text_input("Password", self.password.expose_secret())
                         .secure(true)
                         .on_input(Message::PasswordInputUpdated),
                 ],
             }
         ]
     }
+
+    fn theme(&self) -> Theme {
+        Theme::CatppuccinMocha
+    }
 }
 
 fn main() -> iced::Result {
-    iced::run("Snowvault", Application::update, Application::view)
+    iced::application("Snowvault", Application::update, Application::view)
+        .theme(Application::theme)
+        .run()
 }
