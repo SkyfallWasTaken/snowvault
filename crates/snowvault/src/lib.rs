@@ -33,6 +33,15 @@ pub struct Vault {
     pub entries: Vec<VaultEntry>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct VaultMeta {
+    pub salt: String,
+    pub key_len: usize,
+    #[serde(skip)]
+    pub master_key: Option<SecretSlice<u8>>,
+    pub master_key_hash: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 struct EncVaultEntry {
     /// The nonce is encoded as a hex string.
@@ -55,15 +64,6 @@ pub enum VaultEntry {
         username: Option<String>,
         password: Option<String>,
     },
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub struct VaultMeta {
-    pub salt: String,
-    pub key_len: usize,
-    #[serde(skip)]
-    pub master_key: Option<SecretSlice<u8>>,
-    pub master_key_hash: String,
 }
 
 impl Vault {
@@ -120,7 +120,8 @@ impl Vault {
         Ok(vault)
     }
 
-    pub fn add_entry(&mut self, entry: VaultEntry, key: &SecretSlice<u8>) -> Result<(), Error> {
+    pub fn add_entry(&mut self, entry: VaultEntry) -> Result<(), Error> {
+        let key = self.meta.master_key.as_ref().ok_or(Error::NoMasterKey)?;
         let nonce = {
             let mut rng = ChaCha20Rng::from_entropy();
             Aes256Gcm::generate_nonce(&mut rng)

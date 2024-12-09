@@ -28,6 +28,9 @@ pub enum Error {
 
     #[error("failed to get utf-8 string from decrypted ciphertext")]
     Utf8Error,
+
+    #[error("vault has not been opened, so master key hasn't been initialized. this is a bug.")]
+    NoMasterKey,
 }
 
 impl From<argon2::Error> for Error {
