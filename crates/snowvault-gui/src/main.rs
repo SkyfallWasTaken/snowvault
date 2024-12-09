@@ -1,5 +1,5 @@
 use iced::{
-    widget::{button, column, row, scrollable, text, text_input, Button, Column, Scrollable, Text},
+    widget::{button, column, row, scrollable, text, text_input, Column},
     Length,
 };
 use rfd::FileDialog;
