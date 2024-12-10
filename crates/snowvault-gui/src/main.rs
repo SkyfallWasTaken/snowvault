@@ -66,7 +66,7 @@ impl Application {
                     .add_entry(entry)
                     .unwrap(); // FIXME: Handle error
             }
-            Message::OnBlur => todo!(),
+            Message::OnBlur => {}
         }
     }
 
