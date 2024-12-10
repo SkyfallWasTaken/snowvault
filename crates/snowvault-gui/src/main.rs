@@ -118,7 +118,8 @@ impl Application {
         ]
     }
 
-    fn theme(&self) -> Theme {
+    #[allow(clippy::unused_self)] // Iced requires this method to take &self
+    const fn theme(&self) -> Theme {
         Theme::CatppuccinMocha
     }
 }
