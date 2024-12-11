@@ -5,7 +5,12 @@ use iced::{
 
 mod password_prompt;
 
-pub fn modal_provider<'a, Message>(
+#[derive(Debug, Clone)]
+pub enum ModalType {
+    PasswordPrompt,
+}
+
+pub fn modal<'a, Message>(
     base: impl Into<Element<'a, Message>>,
     content: impl Into<Element<'a, Message>>,
     on_blur: Message,
@@ -32,4 +37,10 @@ where
         )
     ]
     .into()
+}
+
+pub fn get_modal<'a, Message: 'a + Clone>(modal_type: &ModalType) -> Element<'a, Message> {
+    match modal_type {
+        ModalType::PasswordPrompt => password_prompt::password_prompt(),
+    }
 }
