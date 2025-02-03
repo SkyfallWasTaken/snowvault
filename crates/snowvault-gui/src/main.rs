@@ -1,145 +1,128 @@
-use iced::{
-    border,
-    widget::{button, column, container, scrollable, text, text_input, Column, Container},
-    Element, Length, Padding, Theme,
-};
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// hide console window on Windows in release
+use eframe::egui;
+use egui_modal::Modal;
 use rfd::FileDialog;
-use secrecy::{ExposeSecret, SecretString};
-use snowvault::{Vault, VaultEntry};
+use secrecy::SecretString;
+use snowvault::Vault;
+use std::path::PathBuf;
 
-mod font;
-mod modals;
-use modals::ModalType;
-
-#[derive(Default)]
-struct Application {
-    vault: Option<Result<Vault, snowvault::Error>>,
-    password: SecretString,
-    modal: Option<ModalType>,
+fn main() -> eframe::Result {
+    env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default().with_inner_size([320.0, 240.0]),
+        ..Default::default()
+    };
+    eframe::run_native(
+        "Snowvault",
+        options,
+        Box::new(|_cc| Ok(Box::<SnowvaultApp>::default())),
+    )
 }
 
-#[derive(Debug, Clone)]
-pub enum Message {
-    OpenVault,
-    NewVault,
-    EntryAdded,
-    OnBlur,
+enum State {
+    NoVault,
+    PasswordModal {
+        path: PathBuf,
+        creating: bool,
+        error: Option<String>,
+        password: String,
+    },
+    VaultOpen(Vault),
 }
 
-impl Application {
-    fn update(&mut self, message: Message) {
-        match message {
-            Message::OpenVault => {
-                let file = FileDialog::new()
-                    .add_filter("Snowvault File", &["vault"])
-                    .set_directory("/")
-                    .pick_file();
-                if let Some(file) = file {
-                    self.vault = Some(Vault::load_from_file(&file, &self.password));
-                }
-                self.modal = Some(ModalType::PasswordPrompt);
-            }
-            Message::NewVault => {
-                let file = FileDialog::new()
-                    .add_filter("Snowvault File", &["vault"])
-                    .set_directory("/")
-                    .save_file();
-                self.modal = Some(ModalType::PasswordPrompt);
-                if let Some(file) = file {
-                    self.vault = Some(Vault::new_from_password(file, &self.password));
-                }
-            }
+struct SnowvaultApp {
+    state: State,
+}
 
-            Message::OnBlur => {
-                self.modal = None;
-            }
-
-            Message::EntryAdded => {
-                let entry = VaultEntry::Login {
-                    name: "Example".to_string(),
-                    username: Some("example".to_string()),
-                    password: Some("password".to_string()),
-                    uris: vec![],
-                };
-                self.vault
-                    .as_mut()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
-                    .add_entry(entry)
-                    .unwrap(); // FIXME: Handle error
-            }
+impl Default for SnowvaultApp {
+    fn default() -> Self {
+        Self {
+            state: State::NoVault,
         }
     }
+}
 
-    fn view(&self) -> Element<'_, Message> {
-        let mut new_vault = button("New Vault").width(Length::Fill);
-        let mut open_vault = button("Open Vault").width(Length::Fill);
+impl eframe::App for SnowvaultApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("Snowvault");
 
-        /* if !self.password.expose_secret().is_empty() {} */
-        new_vault = new_vault.on_press(Message::NewVault);
-        open_vault = open_vault.on_press(Message::OpenVault);
-
-        let base = container(
-            column![
-                column![new_vault, open_vault].spacing(8),
-                match &self.vault {
-                    Some(Ok(vault)) => {
-                        let entries = vault.entries.iter().map(|entry| match entry {
-                            VaultEntry::Login { name, .. } => {
-                                column![text("Login"), text(name.clone()),].into()
+            match &mut self.state {
+                State::NoVault => {
+                    ui.label("No vault");
+                    ui.horizontal(|ui| {
+                        if ui.button("Open").clicked() {
+                            let path = FileDialog::new()
+                                .add_filter("Snowvault File", &["snow"])
+                                .pick_file();
+                            if let Some(path) = path {
+                                self.state = State::PasswordModal {
+                                    path,
+                                    creating: false,
+                                    error: None,
+                                    password: String::new(),
+                                };
                             }
-                            VaultEntry::Note { name, .. } => {
-                                column![text("Note"), text(name.clone()),].into()
+                        }
+                        if ui.button("Create").clicked() {
+                            let path = FileDialog::new()
+                                .add_filter("Snowvault File", &["snow"])
+                                .save_file();
+                            if let Some(path) = path {
+                                self.state = State::PasswordModal {
+                                    path,
+                                    creating: true,
+                                    error: None,
+                                    password: String::new(),
+                                };
                             }
+                        }
+                    });                
+                },
+                State::PasswordModal {
+                    path,
+                    creating,
+                    error,
+                    password,
+                } => {
+                    let modal = Modal::new(ctx, "password_modal");
+
+                    modal.show(|ui| {
+                        modal.title(ui, "Enter password");
+                        modal.frame(ui, |ui| {
+                            let body_text = if *creating {
+                                "Create a password to encrypt the vault. This will be required to open the vault in the future."
+                            } else {
+                                "Enter the password to open the vault."
+                            };
+                            modal.body(ui, body_text);
+                            ui.text_edit_singleline(&mut *password);
                         });
-
-                        /* Column::new()
-                        .push(Button::new("Add Entry").on_press(Message::EntryAdded))
-                        .push(
-                            Scrollable::new(Column::with_children(entries).spacing(8))
-                                .width(Length::Fill),
-                        )
-                        .width(Length::Fill)
-                        .padding(iced::Padding::from(20))
-                        .spacing(8) */
-
-                        column![
-                            button("Add Entry").on_press(Message::EntryAdded),
-                            scrollable(Column::with_children(entries).spacing(8))
-                                .width(Length::Fill)
-                        ]
-                    }
-                    Some(Err(err)) => column![text("Error opening vault"), text(err.to_string()),],
-                    None => column![text("No vault opened"),],
-                }
-            ]
-            .spacing(12)
-            .height(Length::Fill)
-            .width(Length::Fill),
-        )
-        .padding(Padding::from([20, 24]))
-        .center_x(Length::Fill)
-        .style(|_| container::Style {
-            border: border::rounded(16),
-            ..Default::default()
+                
+                        let button_text = if *creating {
+                            "Create"
+                        } else {
+                            "Decrypt"
+                        };
+                        modal.buttons(ui, |ui| {
+                            // After clicking, the modal is automatically closed
+                            if modal.button(ui, button_text).clicked() {
+                                let vault = Vault::load_from_file(path, &SecretString::new(password.clone().into_boxed_str()));
+                                match vault {
+                                    Ok(vault) => {
+                                        self.state = State::VaultOpen(vault);
+                                    }
+                                    Err(err) => {
+                                        *error = Some(err.to_string());
+                                    }
+                                }
+                            };
+                        });
+                    });   
+                },
+                _ => todo!(),
+            }
         });
-
-        if let Some(modal) = &self.modal {
-            modals::modal(base, modals::get_modal(modal), Message::OnBlur)
-        } else {
-            base.into()
-        }
     }
-
-    #[allow(clippy::unused_self)] // Iced requires this method to take &self
-    const fn theme(&self) -> Theme {
-        Theme::CatppuccinMocha
-    }
-}
-
-fn main() -> iced::Result {
-    iced::application("Snowvault", Application::update, Application::view)
-        .theme(Application::theme)
-        .run()
 }

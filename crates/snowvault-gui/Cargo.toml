@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-iced = "0.13.1"
-rfd = "0.15.1"
+eframe = "0.30.0"
+egui-modal = "0.6.0"
+env_logger = "0.11.6"
+rfd = "0.15.2"
 secrecy = "0.10.3"
 snowvault = { path = "../snowvault" }
