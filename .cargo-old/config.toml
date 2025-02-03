@@ -1,0 +1,11 @@
+[build]
+target = "x86_64-pc-windows-msvc"
+
+[target.x86_64-pc-windows-msvc]
+runner = "wsl2windows-runner"
+linker = "rust-lld"
+rustflags = [
+    "-Lnative=/home/skyfall/.xwin/crt/lib/x86_64",
+    "-Lnative=/home/skyfall/.xwin/sdk/lib/um/x86_64",
+    "-Lnative=/home/skyfall/.xwin/sdk/lib/ucrt/x86_64",
+]
