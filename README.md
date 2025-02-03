@@ -1,6 +1,8 @@
 # Snowvault
 
-<img src="https://raw.githubusercontent.com/SkyfallWasTaken/snowvault/refs/heads/master/snowvault-hero.png" alt="Snowvault - One password to rule them all." style="border-radius: 9px;">
+![Snowvault - One password to rule them all.](https://raw.githubusercontent.com/SkyfallWasTaken/snowvault/refs/heads/master/snowvault-hero.png)
+
+Snowvault is a fast, secure password manager written in Rust. One of the key goals is to provide passwords/API keys etc. to production applications, so it has a CLI interface, as well as a WIP GUI version.
 
 ## Cryptography & Security
 
@@ -9,6 +11,8 @@
 - **SHA256** used only for a master key hash in the vault, used for password verification
 - `secrecy` crate to help prevent leakage/logging of the master key
 - **ChaCha20 CSPRNG** from `rand_chacha` crate, used for generating random nonces and salts
+
+(the above is definitely worded a bit oddly to say the least - promise it's not AI though :P)
 
 ---
 
