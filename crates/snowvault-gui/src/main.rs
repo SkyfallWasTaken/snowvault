@@ -48,80 +48,80 @@ impl eframe::App for SnowvaultApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Snowvault");
 
-            match &mut self.state {
-                State::NoVault => {
-                    ui.label("No vault");
-                    ui.horizontal(|ui| {
-                        if ui.button("Open").clicked() {
-                            let path = FileDialog::new()
-                                .add_filter("Snowvault File", &["snow"])
-                                .pick_file();
-                            if let Some(path) = path {
-                                self.state = State::PasswordModal {
-                                    path,
-                                    creating: false,
-                                    error: None,
-                                    password: String::new(),
-                                };
-                            }
+            if let State::NoVault = self.state {
+                ui.label("No vault");
+                ui.horizontal(|ui| {
+                    if ui.button("Open").clicked() {
+                        let path = FileDialog::new()
+                            .add_filter("Snowvault File", &["snow"])
+                            .pick_file();
+                        if let Some(path) = path {
+                            self.state = State::PasswordModal {
+                                path,
+                                creating: false,
+                                error: None,
+                                password: String::new(),
+                            };
                         }
-                        if ui.button("Create").clicked() {
-                            let path = FileDialog::new()
-                                .add_filter("Snowvault File", &["snow"])
-                                .save_file();
-                            if let Some(path) = path {
-                                self.state = State::PasswordModal {
-                                    path,
-                                    creating: true,
-                                    error: None,
-                                    password: String::new(),
-                                };
-                            }
-                        }
-                    });                
-                },
-                State::PasswordModal {
-                    path,
-                    creating,
-                    error,
-                    password,
-                } => {
-                    let modal = Modal::new(ctx, "password_modal");
+                    }
 
-                    modal.show(|ui| {
-                        modal.title(ui, "Enter password");
-                        modal.frame(ui, |ui| {
-                            let body_text = if *creating {
-                                "Create a password to encrypt the vault. This will be required to open the vault in the future."
-                            } else {
-                                "Enter the password to open the vault."
+                    if ui.button("Create").clicked() {
+                        let path = FileDialog::new()
+                            .add_filter("Snowvault File", &["snow"])
+                            .save_file();
+                        if let Some(path) = path {
+                            self.state = State::PasswordModal {
+                                path,
+                                creating: true,
+                                error: None,
+                                password: String::new(),
                             };
-                            modal.body(ui, body_text);
-                            ui.text_edit_singleline(&mut *password);
-                        });
-                
-                        let button_text = if *creating {
-                            "Create"
+                        }
+                    }
+                });
+            }
+
+            if let State::PasswordModal {
+                path,
+                creating,
+                error,
+                password,
+            } = &mut self.state
+            {
+                let modal = Modal::new(ctx, "password_modal");
+
+                modal.show(|ui| {
+                    modal.title(ui, "Enter password");
+                    modal.frame(ui, |ui| {
+                        let body_text = if *creating {
+                            "Create a password to encrypt the vault. This will be required to open the vault in the future."
                         } else {
-                            "Decrypt"
+                            "Enter the password to open the vault."
                         };
-                        modal.buttons(ui, |ui| {
-                            // After clicking, the modal is automatically closed
-                            if modal.button(ui, button_text).clicked() {
-                                let vault = Vault::load_from_file(path, &SecretString::new(password.clone().into_boxed_str()));
-                                match vault {
-                                    Ok(vault) => {
-                                        self.state = State::VaultOpen(vault);
-                                    }
-                                    Err(err) => {
-                                        *error = Some(err.to_string());
-                                    }
+                        modal.body(ui, body_text);
+                        ui.text_edit_singleline(&mut *password);
+                    });
+
+                    let button_text = if *creating {
+                        "Create"
+                    } else {
+                        "Decrypt"
+                    };
+                    modal.buttons(ui, |ui| {
+                        // After clicking, the modal is automatically closed
+                        if modal.button(ui, button_text).clicked() {
+                            let vault = Vault::load_from_file(path, &SecretString::new(password.clone().into_boxed_str()));
+                            match vault {
+                                Ok(vault) => {
+                                    self.state = State::VaultOpen(vault);
                                 }
-                            };
-                        });
-                    });   
-                },
-                _ => todo!(),
+                                Err(err) => {
+                                    *error = Some(err.to_string());
+                                }
+                            }
+                        };
+                    });
+                });
             }
         });
     }
