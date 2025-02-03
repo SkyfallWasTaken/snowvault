@@ -11,6 +11,7 @@ fn main() -> Result<()> {
     match &cli.command {
         Command::New { path } => commands::new::cmd(path)?,
         Command::Open { path } => commands::open::cmd(path)?,
+        Command::Add { path, name } => commands::add::cmd(path, name)?,
     }
 
     Ok(())

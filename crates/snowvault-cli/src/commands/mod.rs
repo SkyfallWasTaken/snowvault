@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
+pub mod add;
 pub mod new;
 pub mod open;
 
@@ -24,5 +25,14 @@ pub enum Command {
     Open {
         /// Path to the vault
         path: PathBuf,
+    },
+
+    /// Adds an entry to a vault
+    Add {
+        /// Path to the vault
+        path: PathBuf,
+
+        /// Name of the entry
+        name: String,
     },
 }
