@@ -111,14 +111,15 @@ impl eframe::App for SnowvaultApp {
                         // After clicking, the modal is automatically closed
                         if modal.button(ui, button_text).clicked() {
                             let vault = Vault::load_from_file(path, &SecretString::new(password.clone().into_boxed_str()));
-                            match vault {
+                            self.state = match vault {
                                 Ok(vault) => {
-                                    self.state = State::VaultOpen(vault);
+                                    State::VaultOpen(vault)
                                 }
                                 Err(err) => {
                                     *error = Some(err.to_string());
+                                    return;
                                 }
-                            }
+                            };            
                         };
                     });
                 });
