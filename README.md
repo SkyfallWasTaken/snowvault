@@ -4,6 +4,34 @@
 
 Snowvault is a fast, secure password manager written in Rust. One of the key goals is to provide passwords/API keys etc. to production applications, so it has a CLI interface, as well as a WIP GUI version.
 
+## Getting started
+
+First, install Snowvault:
+
+```
+git clone https://github.com/SkyfallWasTaken/snowvault && cd snowvault
+cargo install --path .
+```
+
+Then, create a new vault:
+```
+snowvault new vault.snow
+# Will ask for a master password to use
+```
+
+You can then add an entry, like so:
+
+```
+snowvault add vault.snow "GitHub"
+# Will ask for vault password, and username/password to be stored in the entry
+```
+
+And finally, view the entries in the vault:
+
+```
+snowvault open vault.snow
+```
+
 ## Cryptography & Security
 
 **When you create a new vault,** Snowvault generates a random salt using ChaCha20 (a cryptographically secure RNG), and stores both the SHA256 master key hash and the salt in the vault file - this is safe as getting the master key requires knowing the password and having the salt, preventing rainbow table attacks. The key itself is generated with the Argon2id key derivation function using both the salt and the user-provided password. The `secrecy` crate is used to prevent leaking of secrets (like the key/passwords) in memory.
