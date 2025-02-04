@@ -6,16 +6,12 @@ Snowvault is a fast, secure password manager written in Rust. One of the key goa
 
 ## Cryptography & Security
 
-- **AES-256-GCM** used for encryption of entries. Unique nonce per entry.
-- **Argon2id** used as a **key derivation function (KDF)** to derive the master key for decrypting entries, with a salt which is different for every vault.
-- **SHA256** used only for a master key hash in the vault, used for password verification
-- `secrecy` crate to help prevent leakage/logging of the master key
-- **ChaCha20 CSPRNG** from `rand_chacha` crate, used for generating random nonces and salts
+**When you create a new vault,** Snowvault generates a random salt using ChaCha20 (a cryptographically secure RNG), and stores both the SHA256 master key hash and the salt in the vault file - this is safe as getting the master key requires knowing the password and having the salt, preventing rainbow table attacks. The key itself is generated with the Argon2id key derivation function using both the salt and the user-provided password. The `secrecy` crate is used to prevent leaking of secrets (like the key/passwords) in memory.
 
-(the above is definitely worded a bit oddly to say the least - promise it's not AI though :P)
+When **an item is added,** Snowvault generates a random nonce (random value) per entry using ChaCha20, then encrypts the value using AES-256-GCM and both the master key and the nonce. The encrypted ciphertext and the nonce are both stored in the vault file - this is safe as the value can't be read without the master key, and the master key requires both the salt and the password to be derived.
+
+When **the vault is opened,** the master key is derived using both the user-provided password and the stored salt. The key is then hashed with SHA256 and compared with the hash in the vault file to verify that it's valid. If it's valid, the entries in the file are decrypted using the derived master key.
 
 ---
 
-© 2024 [Mahad Kalam](https://skyfall.dev)
-
-All rights reserved.
+© 2025 [Mahad Kalam](https://skyfall.dev)
